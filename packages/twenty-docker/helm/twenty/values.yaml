@@ -163,7 +163,7 @@ db:
     appPassword: ""  # random if empty
     image:
       repository: twentycrm/twenty-postgres-spilo
-      tag: 3.3-p2
+      tag: v0.43.5  # 3.3-p2 was removed from Docker Hub; pin the newest published tag
     resources:
       requests:
         cpu: 250m

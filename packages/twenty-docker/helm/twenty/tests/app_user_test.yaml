@@ -31,6 +31,16 @@ tests:
           path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
           pattern: CREATE USER
 
+  - it: server init container re-syncs the password when the app user already exists
+    template: templates/deployment-server.yaml
+    set:
+      db.enabled: true
+      db.internal.appUser: test_user
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
+          pattern: ALTER USER
+
   - it: db url uses app user not superuser
     template: templates/secret-db-url.yaml
     set:
