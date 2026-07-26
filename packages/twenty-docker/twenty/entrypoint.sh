@@ -14,6 +14,10 @@ setup_and_migrate_db() {
     if [ "$has_schema" = "f" ]; then
         echo "Database appears to be empty, running migrations."
         yarn database:init:prod
+        did_init=true
+    else
+        echo "Base schema already present - skipping database init (running delta upgrades only)."
+        did_init=false
     fi
 
     if ! yarn command:prod cache:flush; then
@@ -28,7 +32,11 @@ setup_and_migrate_db() {
         echo "Warning: Failed to flush cache after upgrade, but continuing startup..."
     fi
 
-    echo "Successfully migrated DB!"
+    if [ "$did_init" = "true" ]; then
+        echo "Database initialized and migrated."
+    else
+        echo "Delta upgrades applied (base schema was already present)."
+    fi
 }
 
 register_background_jobs() {
