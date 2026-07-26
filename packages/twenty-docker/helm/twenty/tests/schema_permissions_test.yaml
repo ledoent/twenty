@@ -1,35 +1,25 @@
-suite: schema permissions (core for app tables, public for extensions)
+suite: database initialization contract (ownership, no schema pre-creation)
 templates:
   - templates/deployment-server.yaml
 release:
   name: my-twenty
   namespace: default
 tests:
-  # Core Schema Tests
-  # ================
-  # Twenty uses a dedicated 'core' schema for all application tables and the TypeORM
-  # migrations tracking table. This provides namespace isolation and clarity.
+  # The entrypoint treats an existing "core" schema as "already migrated", so the
+  # init container must never create schemas itself.
 
-  - it: ensure-database-exists creates core schema
+  - it: init container does NOT pre-create the core schema
     template: templates/deployment-server.yaml
     set:
       db.enabled: true
     asserts:
-      - matchRegex:
+      - notMatchRegex:
           path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
-          pattern: CREATE SCHEMA IF NOT EXISTS core
+          pattern: CREATE SCHEMA
 
-  - it: app user gets all privileges on core schema
-    template: templates/deployment-server.yaml
-    set:
-      db.enabled: true
-      db.internal.appUser: twenty_app_user
-    asserts:
-      - matchRegex:
-          path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
-          pattern: GRANT ALL PRIVILEGES ON SCHEMA core
+  # Ownership replaces per-object grants: migrations create schemas themselves.
 
-  - it: app user gets all privileges on core tables
+  - it: app user is made owner of the database
     template: templates/deployment-server.yaml
     set:
       db.enabled: true
@@ -37,9 +27,9 @@ tests:
     asserts:
       - matchRegex:
           path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
-          pattern: GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA core
+          pattern: ALTER DATABASE :"db" OWNER TO :"app_user"
 
-  - it: default privileges set for future core tables
+  - it: app user is made owner of the public schema
     template: templates/deployment-server.yaml
     set:
       db.enabled: true
@@ -47,61 +37,25 @@ tests:
     asserts:
       - matchRegex:
           path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
-          pattern: ALTER DEFAULT PRIVILEGES IN SCHEMA core GRANT ALL ON TABLES
+          pattern: ALTER SCHEMA public OWNER TO :"app_user"
 
-  - it: default privileges set for future core sequences
+  # Regression guards for the psql-interpolation bug class: :'var' only works in
+  # plain stdin statements, so the init must feed SQL via heredoc and fail loudly.
+
+  - it: init feeds SQL via stdin heredoc, not -c strings
     template: templates/deployment-server.yaml
     set:
       db.enabled: true
-      db.internal.appUser: twenty_app_user
     asserts:
       - matchRegex:
           path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
-          pattern: ALTER DEFAULT PRIVILEGES IN SCHEMA core GRANT ALL ON SEQUENCES
+          pattern: "<<'EOSQL'"
 
-  # Public Schema Tests
-  # ==================
-  # PostgreSQL extensions (like unaccent for accent-insensitive text search) are
-  # created in the 'public' schema. Twenty's migrations create these functions, so
-  # the app user needs full privileges on the public schema as well.
-
-  - it: app user gets all privileges on public schema
+  - it: init stops loudly on SQL errors
     template: templates/deployment-server.yaml
     set:
       db.enabled: true
-      db.internal.appUser: twenty_app_user
     asserts:
       - matchRegex:
           path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
-          pattern: GRANT ALL PRIVILEGES ON SCHEMA public
-
-  - it: app user gets all privileges on public tables
-    template: templates/deployment-server.yaml
-    set:
-      db.enabled: true
-      db.internal.appUser: twenty_app_user
-    asserts:
-      - matchRegex:
-          path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
-          pattern: GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public
-
-  - it: default privileges set for future public tables
-    template: templates/deployment-server.yaml
-    set:
-      db.enabled: true
-      db.internal.appUser: twenty_app_user
-    asserts:
-      - matchRegex:
-          path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
-          pattern: ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES
-
-  - it: default privileges set for future public sequences
-    template: templates/deployment-server.yaml
-    set:
-      db.enabled: true
-      db.internal.appUser: twenty_app_user
-    asserts:
-      - matchRegex:
-          path: spec.template.spec.initContainers[?(@.name=="ensure-database-exists")].command[2]
-          pattern: ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES
-
+          pattern: ON_ERROR_STOP=1
