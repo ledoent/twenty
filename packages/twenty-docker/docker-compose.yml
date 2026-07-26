@@ -55,7 +55,7 @@ services:
       test: curl --fail http://localhost:3000/healthz
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 40  # first boot runs full migrations and can exceed the previous 100s window (#21035)
     restart: always
 
   worker:
