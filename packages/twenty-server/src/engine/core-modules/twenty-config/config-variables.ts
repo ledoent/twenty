@@ -2137,7 +2137,17 @@ export class ConfigVariables {
 }
 
 export const validate = (config: Record<string, unknown>): ConfigVariables => {
-  const validatedConfig = plainToClass(ConfigVariables, config);
+  // Compose resolves unset `VAR: ${VAR}` lines to '', so treat empty strings as unset (#21035)
+  const emptyKeys = Object.keys(config).filter((key) => config[key] === '');
+  const definedConfig = Object.fromEntries(
+    Object.entries(config).filter(([, value]) => value !== ''),
+  );
+
+  if (emptyKeys.length > 0) {
+    Logger.log(`Treating empty env vars as unset: ${emptyKeys.join(', ')}`);
+  }
+
+  const validatedConfig = plainToClass(ConfigVariables, definedConfig);
 
   const validationErrors = validateSync(validatedConfig, {
     strictGroups: true,
